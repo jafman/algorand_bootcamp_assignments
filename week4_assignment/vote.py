@@ -1,6 +1,6 @@
 from pyteal import *
 
-#ENB 154950807
+#ENB Asset ID 155582482
 
 def approval_program():
     on_creation = Seq(
@@ -11,6 +11,7 @@ def approval_program():
             App.globalPut(Bytes("RegEnd"), Btoi(Txn.application_args[1])),
             App.globalPut(Bytes("VoteBegin"), Btoi(Txn.application_args[2])),
             App.globalPut(Bytes("VoteEnd"), Btoi(Txn.application_args[3])),
+            App.globalPut(Bytes("AssetId"), Int(155582482)),
             Return(Int(1)),
         ]
     )
@@ -18,10 +19,12 @@ def approval_program():
     is_creator = Txn.sender() == App.globalGet(Bytes("Creator"))
 
     get_vote_of_sender = App.localGetEx(Int(0), Int(0), Bytes("voted"))
+    get_asset_holding_of_sender = AssetHolding.balance(Int(0), Int(0));
 
     on_closeout = Seq(
         [
             get_vote_of_sender,
+            get_asset_holding_of_sender,
             If(
                 And(
                     Global.round() <= App.globalGet(Bytes("VoteEnd")),
@@ -29,7 +32,7 @@ def approval_program():
                 ),
                 App.globalPut(
                     get_vote_of_sender.value(),
-                    App.globalGet(get_vote_of_sender.value()) - Int(1),
+                    App.globalGet(get_vote_of_sender.value()) - get_asset_holding_of_sender.value(),
                 ),
             ),
             Return(Int(1)),
@@ -54,8 +57,22 @@ def approval_program():
                 )
             ),
             get_vote_of_sender,
+            get_asset_holding_of_sender,
+            Assert(
+                And(
+                    get_asset_holding_of_sender.hasValue(),
+                    get_asset_holding_of_sender.value() >= Int(1000)
+                )
+            ),
             If(get_vote_of_sender.hasValue(), Return(Int(0))),
-            App.globalPut(choice, choice_tally + Int(1)),
+            Assert(
+                Or(
+                    choice == Bytes("yes"),
+                    choice == Bytes("no"),
+                    choice == Bytes("abstain")
+                )
+            ),
+            App.globalPut(choice, choice_tally + get_asset_holding_of_sender.value()),
             App.localPut(Int(0), Bytes("voted"), choice),
             Return(Int(1)),
         ]
@@ -75,9 +92,11 @@ def approval_program():
 
 def clear_state_program():
     get_vote_of_sender = App.localGetEx(Int(0), Int(0), Bytes("voted"))
+    get_asset_holding_of_sender = AssetHolding.balance(Int(0), Int(0));
     program = Seq(
         [
             get_vote_of_sender,
+            get_asset_holding_of_sender,
             If(
                 And(
                     Global.round() <= App.globalGet(Bytes("VoteEnd")),
@@ -85,7 +104,7 @@ def clear_state_program():
                 ),
                 App.globalPut(
                     get_vote_of_sender.value(),
-                    App.globalGet(get_vote_of_sender.value()) - Int(1),
+                    App.globalGet(get_vote_of_sender.value()) - get_asset_holding_of_sender.value(),
                 ),
             ),
             Return(Int(1)),

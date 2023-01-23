@@ -5,7 +5,7 @@ from algosdk import account, mnemonic
 from algosdk.v2client import algod
 from pyteal import compileTeal, Mode
 from vote import approval_program, clear_state_program
-from pyteal import AssetHolding
+from pyteal import *
 
 # user declared account mnemonics
 creator_mnemonic = "oblige accuse obtain solve setup capable section love hurry buddy charge neck wrist panel group clinic maximum concert smooth cube coach project talk absent gadget"
@@ -133,9 +133,18 @@ def opt_in_app(client, private_key, index):
     transaction_response = client.pending_transaction_info(tx_id)
     print("OptIn to app-id:", transaction_response["txn"]["txn"]["apid"])
 
+# Get Asset ID
+def get_asset_id(global_state):
+    for key, value in global_state.items():
+        print("Current Key:", key)
+        if key == "AssetId" and isinstance(value, int):
+            print("Found AssetId:", value)
+            return value
+    print("Can't find AssetID, None returned.")
+    return None
 
 # call application
-def call_app(client, private_key, index, app_args):
+def call_app(client, private_key, index, app_args, assetId):
     # declare sender
     sender = account.address_from_private_key(private_key)
     print("Call from account:", sender)
@@ -147,7 +156,7 @@ def call_app(client, private_key, index, app_args):
     params.fee = 1000
 
     # create unsigned transaction
-    txn = transaction.ApplicationNoOpTxn(sender, params, index, app_args)
+    txn = transaction.ApplicationNoOpTxn(sender, params, index, app_args,[],[],[assetId])
 
     # sign transaction
     signed_txn = txn.sign(private_key)
@@ -304,7 +313,7 @@ def main():
     local_ints = 0
     local_bytes = 1
     global_ints = (
-        24  # 4 for setup + 20 for choices. Use a larger number for more choices.
+        26  # 4 for setup + 20 for choices. Use a larger number for more choices.
     )
     global_bytes = 1
     global_schema = transaction.StateSchema(global_ints, global_bytes)
@@ -375,8 +384,15 @@ def main():
 
     wait_for_round(algod_client, voteBegin)
 
+     # read global state of application
+    global_state = read_global_state(
+        algod_client, account.address_from_private_key(creator_private_key), app_id
+    )
+
+    assetId = get_asset_id(global_state)
+
     # call application without arguments
-    call_app(algod_client, user_private_key, app_id, [b"vote", b"choiceA"])
+    call_app(algod_client, user_private_key, app_id, [b"vote", b"yes"], assetId)
 
     # read local state of application from user account
     print(
@@ -393,23 +409,26 @@ def main():
     global_state = read_global_state(
         algod_client, account.address_from_private_key(creator_private_key), app_id
     )
+   
     print("Global state:", global_state)
 
     max_votes = 0
     max_votes_choice = None
     for key, value in global_state.items():
+        print("vote key:", key)
         if key not in (
             "RegBegin",
             "RegEnd",
             "VoteBegin",
             "VoteEnd",
             "Creator",
+            "AssetId"
         ) and isinstance(value, int):
             if value > max_votes:
                 max_votes = value
                 max_votes_choice = key
 
-    print("The winner is:", max_votes_choice)
+    print("The winner is:", max_votes_choice, "with ", max_votes, " number vote count.")
 
     # delete application
     delete_app(algod_client, creator_private_key, app_id)
