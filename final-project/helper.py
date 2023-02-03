@@ -383,9 +383,6 @@ def main():
         ),
     )
 
-    # opt-in to application
-    # opt_in_app(algod_client, creator_private_key, app_id) 
-
     # make payment
     sendDonation(algod_client, user_private_key, account.address_from_private_key(creator_private_key), 10)
 
